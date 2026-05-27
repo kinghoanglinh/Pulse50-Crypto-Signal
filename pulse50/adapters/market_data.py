@@ -8,6 +8,7 @@ as CoinAPI can be preferred in production, with CoinGecko/Binance as fallback.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from pulse50.config import (
@@ -16,6 +17,11 @@ from pulse50.config import (
     COINAPI_BASE_URL,
     PROVIDER_PRIORITY,
 )
+
+try:
+    import requests
+except ImportError:  # pragma: no cover - only before dependencies are installed
+    requests = None
 
 
 class MarketDataProviderError(RuntimeError):
@@ -79,14 +85,126 @@ class CoinAPIProvider:
         normalized_multi_exchange=True,
     )
 
-    def __init__(self, api_key: str = COINAPI_API_KEY, base_url: str = COINAPI_BASE_URL):
+    exchange_priority = ("BINANCE", "COINBASE", "KRAKEN", "BITSTAMP", "OKX")
+
+    def __init__(
+        self,
+        api_key: str = COINAPI_API_KEY,
+        base_url: str = COINAPI_BASE_URL,
+        session: Any | None = None,
+    ):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
+        self.session = session or requests
 
     def get_asset_market_data(self, symbol: str, quote_asset: str = "USDT") -> AssetMarketData:
         if not self.api_key:
             raise MarketDataProviderError("coinapi api key is not configured")
-        raise MarketDataProviderError("coinapi live fetching is not implemented yet")
+        if self.session is None:
+            raise MarketDataProviderError("requests is not installed")
+
+        errors: list[str] = []
+        for symbol_id in self._candidate_symbol_ids(symbol, quote_asset):
+            try:
+                return self._fetch_symbol(symbol.upper(), quote_asset, symbol_id)
+            except MarketDataProviderError as exc:
+                errors.append(f"{symbol_id}: {exc}")
+
+        raise MarketDataProviderError("; ".join(errors) or "no coinapi symbol candidates")
+
+    def _candidate_symbol_ids(self, symbol: str, quote_asset: str) -> list[str]:
+        base = symbol.upper()
+        requested_quote = quote_asset.upper()
+        quotes = [requested_quote]
+        if requested_quote == "USDT":
+            quotes.append("USD")
+        elif requested_quote == "USD":
+            quotes.append("USDT")
+
+        candidates: list[str] = []
+        for exchange in self.exchange_priority:
+            for quote in quotes:
+                candidates.append(f"{exchange}_SPOT_{base}_{quote}")
+        return candidates
+
+    def _fetch_symbol(self, symbol: str, quote_asset: str, symbol_id: str) -> AssetMarketData:
+        ohlcv_1m = self._fetch_ohlcv(symbol_id, "1MIN", 30)
+        ohlcv_5m = self._fetch_ohlcv(symbol_id, "5MIN", 10)
+        if len(ohlcv_1m) < 10:
+            raise MarketDataProviderError("insufficient 1m candles")
+
+        order_book, order_book_warning = self._fetch_order_book(symbol_id)
+        latest_candle = ohlcv_1m[-1]
+        data_freshness = _freshness_seconds(latest_candle.get("timestamp"))
+        liquidity_quality = _liquidity_quality(order_book)
+        data_quality = "OK" if not order_book_warning else "no_orderbook"
+
+        warnings = []
+        if order_book_warning:
+            warnings.append(order_book_warning)
+
+        return AssetMarketData(
+            symbol=symbol,
+            quote_asset=quote_asset,
+            pair=symbol_id,
+            supported=True,
+            provider_used=self.capability.name,
+            coverage_score=1.0 if order_book else 0.75,
+            data_freshness_seconds=data_freshness,
+            liquidity_quality=liquidity_quality,
+            ohlcv_1m=ohlcv_1m,
+            ohlcv_5m=ohlcv_5m,
+            ticker={
+                "last_price": latest_candle.get("close"),
+                "last_volume": latest_candle.get("volume"),
+                "trades_count": latest_candle.get("trades_count"),
+            },
+            order_book=order_book,
+            data_quality=data_quality,
+            warnings=warnings,
+        )
+
+    def _fetch_ohlcv(self, symbol_id: str, period_id: str, limit: int) -> list[dict[str, Any]]:
+        payload = self._get(
+            f"/v1/ohlcv/{symbol_id}/latest",
+            params={"period_id": period_id, "limit": limit},
+        )
+        if not isinstance(payload, list):
+            raise MarketDataProviderError(f"unexpected {period_id} ohlcv payload")
+
+        candles = [_normalize_coinapi_candle(item) for item in payload]
+        candles = [candle for candle in candles if candle]
+        candles.sort(key=lambda candle: str(candle["timestamp"]))
+        return candles
+
+    def _fetch_order_book(self, symbol_id: str) -> tuple[dict[str, Any], str | None]:
+        try:
+            payload = self._get(
+                f"/v1/orderbooks/{symbol_id}/current",
+                params={"limit_levels": 5},
+            )
+        except MarketDataProviderError as exc:
+            return {}, f"coinapi order book unavailable: {exc}"
+
+        if not isinstance(payload, dict):
+            return {}, "coinapi order book returned unexpected payload"
+
+        return _normalize_coinapi_order_book(payload), None
+
+    def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
+        headers = {"X-CoinAPI-Key": self.api_key}
+        url = f"{self.base_url}{path}"
+        response = self.session.get(url, headers=headers, params=params or {}, timeout=10)
+
+        if response.status_code == 404:
+            raise MarketDataProviderError("symbol not found")
+        if response.status_code == 429:
+            raise MarketDataProviderError("rate limit reached")
+        if response.status_code == 401:
+            raise MarketDataProviderError("unauthorized api key")
+        if response.status_code >= 400:
+            raise MarketDataProviderError(f"http {response.status_code}")
+        return response.json()
 
 
 class CoinGeckoProvider:
@@ -176,3 +294,78 @@ class ProviderRouter:
         score += 0.20 if capability.has_ticker else 0.0
         score += 0.20 if capability.normalized_multi_exchange else 0.0
         return round(score, 2)
+
+
+def _normalize_coinapi_candle(item: dict[str, Any]) -> dict[str, Any] | None:
+    try:
+        return {
+            "timestamp": item.get("time_period_start"),
+            "open": float(item["price_open"]),
+            "high": float(item["price_high"]),
+            "low": float(item["price_low"]),
+            "close": float(item["price_close"]),
+            "volume": float(item.get("volume_traded") or 0.0),
+            "trades_count": int(item.get("trades_count") or 0),
+        }
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _normalize_coinapi_order_book(payload: dict[str, Any]) -> dict[str, Any]:
+    bids = [
+        {"price": float(level["price"]), "size": float(level["size"])}
+        for level in payload.get("bids", [])
+        if "price" in level and "size" in level
+    ]
+    asks = [
+        {"price": float(level["price"]), "size": float(level["size"])}
+        for level in payload.get("asks", [])
+        if "price" in level and "size" in level
+    ]
+    best_bid = bids[0]["price"] if bids else None
+    best_ask = asks[0]["price"] if asks else None
+    spread_pct = None
+    if best_bid and best_ask:
+        mid = (best_bid + best_ask) / 2
+        spread_pct = ((best_ask - best_bid) / mid) * 100 if mid else None
+
+    bid_volume = sum(level["size"] for level in bids)
+    ask_volume = sum(level["size"] for level in asks)
+    imbalance = None
+    if bid_volume + ask_volume > 0:
+        imbalance = (bid_volume - ask_volume) / (bid_volume + ask_volume)
+
+    return {
+        "timestamp": payload.get("time_exchange") or payload.get("time_coinapi"),
+        "bids": bids,
+        "asks": asks,
+        "best_bid": best_bid,
+        "best_ask": best_ask,
+        "spread_pct": spread_pct,
+        "bid_volume": bid_volume,
+        "ask_volume": ask_volume,
+        "book_imbalance": imbalance,
+    }
+
+
+def _freshness_seconds(timestamp: Any) -> float | None:
+    if not timestamp:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return max(0.0, (datetime.now(UTC) - parsed).total_seconds())
+
+
+def _liquidity_quality(order_book: dict[str, Any]) -> str:
+    spread_pct = order_book.get("spread_pct")
+    if spread_pct is None:
+        return "unknown"
+    if spread_pct <= 0.03:
+        return "excellent"
+    if spread_pct <= 0.10:
+        return "good"
+    if spread_pct <= 0.30:
+        return "fair"
+    return "poor"
