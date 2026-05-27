@@ -235,11 +235,85 @@ class BinanceProvider:
         normalized_multi_exchange=False,
     )
 
-    def __init__(self, base_url: str = BINANCE_BASE_URL):
+    def __init__(self, base_url: str = BINANCE_BASE_URL, session: Any | None = None):
         self.base_url = base_url.rstrip("/")
+        self.session = session or requests
 
     def get_asset_market_data(self, symbol: str, quote_asset: str = "USDT") -> AssetMarketData:
-        raise MarketDataProviderError("binance live market-data fetching is not implemented yet")
+        if self.session is None:
+            raise MarketDataProviderError("requests is not installed")
+
+        pair = f"{symbol.upper()}{quote_asset.upper()}"
+        if not self._pair_is_trading(pair):
+            raise MarketDataProviderError(f"{pair} is not a trading spot pair")
+
+        ohlcv_1m = self._fetch_klines(pair, "1m", 30)
+        ohlcv_5m = self._fetch_klines(pair, "5m", 10)
+        if len(ohlcv_1m) < 10:
+            raise MarketDataProviderError("insufficient 1m candles")
+
+        ticker = self._fetch_ticker(pair)
+        order_book = self._fetch_order_book(pair)
+        latest_candle = ohlcv_1m[-1]
+
+        return AssetMarketData(
+            symbol=symbol.upper(),
+            quote_asset=quote_asset.upper(),
+            pair=pair,
+            supported=True,
+            provider_used=self.capability.name,
+            coverage_score=0.8,
+            data_freshness_seconds=_freshness_seconds(latest_candle.get("timestamp")),
+            liquidity_quality=_liquidity_quality(order_book),
+            ohlcv_1m=ohlcv_1m,
+            ohlcv_5m=ohlcv_5m,
+            ticker=ticker,
+            order_book=order_book,
+            data_quality="OK",
+        )
+
+    def _pair_is_trading(self, pair: str) -> bool:
+        payload = self._get("/api/v3/exchangeInfo", params={"symbol": pair})
+        symbols = payload.get("symbols", []) if isinstance(payload, dict) else []
+        return any(item.get("symbol") == pair and item.get("status") == "TRADING" for item in symbols)
+
+    def _fetch_klines(self, pair: str, interval: str, limit: int) -> list[dict[str, Any]]:
+        payload = self._get(
+            "/api/v3/klines",
+            params={"symbol": pair, "interval": interval, "limit": limit},
+        )
+        if not isinstance(payload, list):
+            raise MarketDataProviderError(f"unexpected {interval} kline payload")
+        candles = [_normalize_binance_kline(item) for item in payload]
+        return [candle for candle in candles if candle]
+
+    def _fetch_ticker(self, pair: str) -> dict[str, Any]:
+        payload = self._get("/api/v3/ticker/24hr", params={"symbol": pair})
+        if not isinstance(payload, dict):
+            raise MarketDataProviderError("unexpected ticker payload")
+        return {
+            "last_price": _float_or_none(payload.get("lastPrice")),
+            "price_change_pct_24h": _float_or_none(payload.get("priceChangePercent")),
+            "volume": _float_or_none(payload.get("volume")),
+            "quote_volume": _float_or_none(payload.get("quoteVolume")),
+            "weighted_avg_price": _float_or_none(payload.get("weightedAvgPrice")),
+        }
+
+    def _fetch_order_book(self, pair: str) -> dict[str, Any]:
+        payload = self._get("/api/v3/depth", params={"symbol": pair, "limit": 5})
+        if not isinstance(payload, dict):
+            raise MarketDataProviderError("unexpected order book payload")
+        return _normalize_binance_order_book(payload)
+
+    def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
+        response = self.session.get(f"{self.base_url}{path}", params=params or {}, timeout=10)
+        if response.status_code == 404:
+            raise MarketDataProviderError("symbol not found")
+        if response.status_code == 429:
+            raise MarketDataProviderError("rate limit reached")
+        if response.status_code >= 400:
+            raise MarketDataProviderError(f"http {response.status_code}")
+        return response.json()
 
 
 class ProviderRouter:
@@ -322,30 +396,42 @@ def _normalize_coinapi_order_book(payload: dict[str, Any]) -> dict[str, Any]:
         for level in payload.get("asks", [])
         if "price" in level and "size" in level
     ]
-    best_bid = bids[0]["price"] if bids else None
-    best_ask = asks[0]["price"] if asks else None
-    spread_pct = None
-    if best_bid and best_ask:
-        mid = (best_bid + best_ask) / 2
-        spread_pct = ((best_ask - best_bid) / mid) * 100 if mid else None
+    return _order_book_metrics(
+        bids=bids,
+        asks=asks,
+        timestamp=payload.get("time_exchange") or payload.get("time_coinapi"),
+    )
 
-    bid_volume = sum(level["size"] for level in bids)
-    ask_volume = sum(level["size"] for level in asks)
-    imbalance = None
-    if bid_volume + ask_volume > 0:
-        imbalance = (bid_volume - ask_volume) / (bid_volume + ask_volume)
 
-    return {
-        "timestamp": payload.get("time_exchange") or payload.get("time_coinapi"),
-        "bids": bids,
-        "asks": asks,
-        "best_bid": best_bid,
-        "best_ask": best_ask,
-        "spread_pct": spread_pct,
-        "bid_volume": bid_volume,
-        "ask_volume": ask_volume,
-        "book_imbalance": imbalance,
-    }
+def _normalize_binance_kline(item: list[Any]) -> dict[str, Any] | None:
+    try:
+        return {
+            "timestamp": datetime.fromtimestamp(int(item[0]) / 1000, tz=UTC).isoformat(),
+            "open": float(item[1]),
+            "high": float(item[2]),
+            "low": float(item[3]),
+            "close": float(item[4]),
+            "volume": float(item[5]),
+            "close_time": datetime.fromtimestamp(int(item[6]) / 1000, tz=UTC).isoformat(),
+            "quote_volume": float(item[7]),
+            "trades_count": int(item[8]),
+            "taker_buy_base_volume": float(item[9]),
+            "taker_buy_quote_volume": float(item[10]),
+        }
+    except (IndexError, TypeError, ValueError):
+        return None
+
+
+def _normalize_binance_order_book(payload: dict[str, Any]) -> dict[str, Any]:
+    bids = [
+        {"price": float(price), "size": float(size)}
+        for price, size in payload.get("bids", [])
+    ]
+    asks = [
+        {"price": float(price), "size": float(size)}
+        for price, size in payload.get("asks", [])
+    ]
+    return _order_book_metrics(bids=bids, asks=asks, timestamp=None)
 
 
 def _freshness_seconds(timestamp: Any) -> float | None:
@@ -369,3 +455,41 @@ def _liquidity_quality(order_book: dict[str, Any]) -> str:
     if spread_pct <= 0.30:
         return "fair"
     return "poor"
+
+
+def _order_book_metrics(
+    bids: list[dict[str, float]],
+    asks: list[dict[str, float]],
+    timestamp: Any,
+) -> dict[str, Any]:
+    best_bid = bids[0]["price"] if bids else None
+    best_ask = asks[0]["price"] if asks else None
+    spread_pct = None
+    if best_bid and best_ask:
+        mid = (best_bid + best_ask) / 2
+        spread_pct = ((best_ask - best_bid) / mid) * 100 if mid else None
+
+    bid_volume = sum(level["size"] for level in bids)
+    ask_volume = sum(level["size"] for level in asks)
+    imbalance = None
+    if bid_volume + ask_volume > 0:
+        imbalance = (bid_volume - ask_volume) / (bid_volume + ask_volume)
+
+    return {
+        "timestamp": timestamp,
+        "bids": bids,
+        "asks": asks,
+        "best_bid": best_bid,
+        "best_ask": best_ask,
+        "spread_pct": spread_pct,
+        "bid_volume": bid_volume,
+        "ask_volume": ask_volume,
+        "book_imbalance": imbalance,
+    }
+
+
+def _float_or_none(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None

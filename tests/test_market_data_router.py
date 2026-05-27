@@ -2,6 +2,7 @@ import unittest
 
 from pulse50.adapters.market_data import (
     AssetMarketData,
+    BinanceProvider,
     CoinAPIProvider,
     MarketDataProviderError,
     ProviderCapability,
@@ -134,6 +135,80 @@ class CoinAPIProviderTests(unittest.TestCase):
 
         with self.assertRaises(MarketDataProviderError):
             provider.get_asset_market_data("btc")
+
+
+class MockBinanceSession:
+    def __init__(self):
+        self.calls = []
+
+    def get(self, url, params=None, timeout=10):
+        self.calls.append({"url": url, "params": params, "timeout": timeout})
+        if url.endswith("/exchangeInfo"):
+            return MockResponse(
+                200,
+                {"symbols": [{"symbol": "BTCUSDT", "status": "TRADING"}]},
+            )
+        if url.endswith("/klines"):
+            limit = int(params["limit"])
+            base_ts = 1779876000000
+            interval_ms = 60_000 if params["interval"] == "1m" else 300_000
+            candles = []
+            for index in range(limit):
+                open_time = base_ts + (index * interval_ms)
+                candles.append(
+                    [
+                        open_time,
+                        str(100 + index),
+                        str(101 + index),
+                        str(99 + index),
+                        str(100.5 + index),
+                        str(10 + index),
+                        open_time + interval_ms - 1,
+                        str(1000 + index),
+                        20 + index,
+                        str(5 + index),
+                        str(500 + index),
+                        "0",
+                    ]
+                )
+            return MockResponse(200, candles)
+        if url.endswith("/ticker/24hr"):
+            return MockResponse(
+                200,
+                {
+                    "lastPrice": "129.5",
+                    "priceChangePercent": "1.25",
+                    "volume": "1234",
+                    "quoteVolume": "567890",
+                    "weightedAvgPrice": "125.5",
+                },
+            )
+        if url.endswith("/depth"):
+            return MockResponse(
+                200,
+                {
+                    "bids": [["129.99", "2"], ["129.98", "1"]],
+                    "asks": [["130.01", "1"], ["130.02", "1"]],
+                },
+            )
+        return MockResponse(500, {"error": "unexpected"})
+
+
+class BinanceProviderTests(unittest.TestCase):
+    def test_fetches_and_normalizes_binance_fallback_data(self):
+        provider = BinanceProvider(session=MockBinanceSession())
+
+        result = provider.get_asset_market_data("btc")
+
+        self.assertTrue(result.supported)
+        self.assertEqual(result.provider_used, "binance")
+        self.assertEqual(result.pair, "BTCUSDT")
+        self.assertEqual(len(result.ohlcv_1m), 30)
+        self.assertEqual(len(result.ohlcv_5m), 10)
+        self.assertEqual(result.ticker["last_price"], 129.5)
+        self.assertAlmostEqual(result.order_book["spread_pct"], 0.015384615384617082)
+        self.assertEqual(result.liquidity_quality, "excellent")
+        self.assertEqual(result.coverage_score, 0.8)
 
 
 if __name__ == "__main__":
