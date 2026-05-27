@@ -8,6 +8,7 @@ from pulse50.adapters.market_data import (
     ProviderCapability,
     ProviderRouter,
 )
+from pulse50.cache.store import TTLCache
 
 
 class FailingProvider:
@@ -45,6 +46,26 @@ class WorkingProvider:
         )
 
 
+class CountingProvider(WorkingProvider):
+    def __init__(self):
+        self.calls = 0
+
+    def get_asset_market_data(self, symbol: str, quote_asset: str = "USDT") -> AssetMarketData:
+        self.calls += 1
+        return super().get_asset_market_data(symbol, quote_asset)
+
+
+class FlakyProvider(WorkingProvider):
+    def __init__(self):
+        self.calls = 0
+
+    def get_asset_market_data(self, symbol: str, quote_asset: str = "USDT") -> AssetMarketData:
+        self.calls += 1
+        if self.calls > 1:
+            raise MarketDataProviderError("temporary outage")
+        return super().get_asset_market_data(symbol, quote_asset)
+
+
 class ProviderRouterTests(unittest.TestCase):
     def test_routes_to_fallback_and_records_provider_metadata(self):
         router = ProviderRouter(providers=[FailingProvider(), WorkingProvider()])
@@ -66,6 +87,40 @@ class ProviderRouterTests(unittest.TestCase):
         self.assertEqual(result.data_quality, "provider_unavailable")
         self.assertIsNone(result.provider_used)
         self.assertEqual(result.coverage_score, 0.0)
+
+    def test_returns_cached_result_without_second_provider_call(self):
+        provider = CountingProvider()
+        cache = TTLCache()
+        router = ProviderRouter(providers=[provider], cache=cache)
+
+        first = router.get_asset_market_data("btc")
+        second = router.get_asset_market_data("btc")
+
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(first.pair, second.pair)
+        self.assertIn("served_from_cache", second.warnings[-1])
+
+    def test_returns_stale_cache_when_provider_fails_after_ttl(self):
+        class FakeClock:
+            def __init__(self):
+                self.now = 1000.0
+
+            def __call__(self):
+                return self.now
+
+        clock = FakeClock()
+        provider = FlakyProvider()
+        cache = TTLCache(clock=clock)
+        router = ProviderRouter(providers=[provider], cache=cache)
+
+        first = router.get_asset_market_data("btc")
+        clock.now += 20
+        second = router.get_asset_market_data("btc")
+
+        self.assertEqual(provider.calls, 2)
+        self.assertEqual(first.pair, second.pair)
+        self.assertEqual(second.data_quality, "stale_cache")
+        self.assertIn("served_from_stale_cache", second.warnings[-1])
 
 
 class MockResponse:

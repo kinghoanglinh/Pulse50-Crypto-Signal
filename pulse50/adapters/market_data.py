@@ -17,6 +17,7 @@ from pulse50.config import (
     COINAPI_BASE_URL,
     PROVIDER_PRIORITY,
 )
+from pulse50.cache.store import CACHE_TTLS, TTLCache, default_cache
 
 try:
     import requests
@@ -319,7 +320,11 @@ class BinanceProvider:
 class ProviderRouter:
     """Try providers in priority order and return the first usable normalized result."""
 
-    def __init__(self, providers: list[MarketDataProvider] | None = None):
+    def __init__(
+        self,
+        providers: list[MarketDataProvider] | None = None,
+        cache: TTLCache | None = default_cache,
+    ):
         provider_map: dict[str, MarketDataProvider] = {
             "coinapi": CoinAPIProvider(),
             "coingecko": CoinGeckoProvider(),
@@ -328,12 +333,26 @@ class ProviderRouter:
         self.providers = providers or [
             provider_map[name] for name in PROVIDER_PRIORITY if name in provider_map
         ]
+        self.cache = cache
 
     def get_asset_market_data(
         self,
         symbol: str,
         quote_asset: str = "USDT",
     ) -> AssetMarketData:
+        cache_key = f"asset_market_data:{symbol.upper()}:{quote_asset.upper()}"
+        cached_stale: AssetMarketData | None = None
+        stale_age_seconds: float | None = None
+        if self.cache is not None:
+            cached, age_seconds = self.cache.get(cache_key)
+            if isinstance(cached, AssetMarketData):
+                cached.data_freshness_seconds = age_seconds
+                cached.warnings = [*cached.warnings, f"served_from_cache age_seconds={age_seconds:.2f}"]
+                return cached
+            stale_value, stale_age_seconds = self.cache.get_stale(cache_key)
+            if isinstance(stale_value, AssetMarketData):
+                cached_stale = stale_value
+
         fallbacks: list[str] = []
 
         for provider in self.providers:
@@ -343,9 +362,21 @@ class ProviderRouter:
                 result.provider_used = provider_name
                 result.provider_fallbacks = fallbacks
                 result.coverage_score = max(result.coverage_score, self._coverage_score(provider))
+                if self.cache is not None:
+                    self.cache.set(cache_key, result, CACHE_TTLS["asset_market_data"])
                 return result
             except MarketDataProviderError as exc:
                 fallbacks.append(f"{provider_name}: {exc}")
+
+        if cached_stale is not None:
+            cached_stale.provider_fallbacks = fallbacks
+            cached_stale.data_freshness_seconds = stale_age_seconds
+            cached_stale.data_quality = "stale_cache"
+            cached_stale.warnings = [
+                *cached_stale.warnings,
+                f"served_from_stale_cache age_seconds={stale_age_seconds:.2f}",
+            ]
+            return cached_stale
 
         return AssetMarketData(
             symbol=symbol.upper(),
