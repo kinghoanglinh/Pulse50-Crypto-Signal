@@ -18,6 +18,8 @@ COINAPI_API_KEY = os.getenv("COINAPI_API_KEY", "")
 COINGECKO_BASE_URL = os.getenv("COINGECKO_BASE_URL", "https://api.coingecko.com/api/v3")
 BINANCE_BASE_URL = os.getenv("BINANCE_BASE_URL", "https://api.binance.com")
 COINAPI_BASE_URL = os.getenv("COINAPI_BASE_URL", "https://rest.coinapi.io")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_DEFAULT_UNIVERSE_SIZE = int(os.getenv("TELEGRAM_DEFAULT_UNIVERSE_SIZE", "10"))
 
 DEFAULT_UNIVERSE_SIZE = 50
 DEFAULT_QUOTE_ASSET = "USDT"

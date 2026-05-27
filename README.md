@@ -93,3 +93,30 @@ python evaluate.py
 
 The evaluator prints hit rate, average realized return, Brier score, and
 confidence bucket counts, then writes `calibration_report.csv`.
+
+## Telegram Bot
+
+Pulse50 can also run as a Telegram bot without changing the Swarms tool
+entrypoint. Anyone can deploy their own bot by setting a Telegram token.
+
+Create a bot with Telegram `@BotFather`, then add this to `.env`:
+
+```text
+TELEGRAM_BOT_TOKEN=your_bot_token
+TELEGRAM_DEFAULT_UNIVERSE_SIZE=10
+```
+
+Install dependencies and run:
+
+```bash
+pip install -r requirements.txt
+python -m pulse50.telegram_bot
+```
+
+Commands:
+
+- `/scan` - run a top signal scan
+- `/top 5` - show top N signals
+- `/coin SOL` - show one coin signal
+- `/status` - show provider/runtime status
+- `/help` - show commands

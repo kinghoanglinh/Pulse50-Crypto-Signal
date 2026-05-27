@@ -4,3 +4,4 @@ numpy
 ta
 pydantic
 python-dotenv
+python-telegram-bot
