@@ -28,7 +28,7 @@ HELP_TEXT = """Lenh Pulse50:
 /scan - quet nhanh top 5 keo
 /top [n] - xem top n keo, vi du /top 10
 /coin SYMBOL - xem rieng 1 coin, vi du /coin SOL
-/status - xem trang thai provider/runtime
+/status - xem trang thai nguon du lieu/thoi gian chay
 /help - xem danh sach lenh
 
 Tin hieu chi dung cho nghien cuu. Khong phai loi khuyen tai chinh hay lenh vao vi the."""
@@ -76,7 +76,7 @@ async def top_command(update, context) -> None:
 
 async def coin_command(update, context) -> None:
     if not context.args:
-        await _reply(update, "Usage: /coin SOL")
+        await _reply(update, "Cach dung: /coin SOL")
         return
     symbol = context.args[0].upper()
     response = await _run_scan()
@@ -115,7 +115,7 @@ async def set_bot_commands(app) -> None:
             BotCommand("scan", "Quet nhanh top 5 keo"),
             BotCommand("top", "Xem top n keo"),
             BotCommand("coin", "Xem rieng 1 coin"),
-            BotCommand("status", "Trang thai bot/provider"),
+            BotCommand("status", "Trang thai bot/nguon data"),
             BotCommand("help", "Huong dan lenh"),
         ]
     )
@@ -141,7 +141,7 @@ def format_scan_response(response: dict[str, Any], limit: int = 5) -> str:
         side = _trade_side(signal.get("direction"))
         lines.extend(
             [
-                f"{signal['rank']}. {signal['symbol']} | {side} | p_up {signal['probability_up']:.0%}",
+                f"{signal['rank']}. {signal['symbol']} | {side} | xac suat tang {signal['probability_up']:.0%}",
                 f"Do tin cay: {_vi_confidence(signal['confidence'])} | Rui ro: {_vi_risk(signal['risk_tier'])}",
                 f"Nguon: {provider.get('provider_used')} | Thanh khoan: {_vi_liquidity(provider.get('liquidity_quality'))}",
                 f"Gia vo hieu keo: {signal.get('invalidation_level')}",
@@ -158,13 +158,13 @@ def format_coin_response(response: dict[str, Any], symbol: str) -> str:
             provider = signal.get("provider", {})
             rationale = "; ".join(signal.get("rationale", []))
             return "\n".join(
-                [
-                    f"Pulse50 {symbol}",
-                    f"Huong: {_trade_side(signal['direction'])} | p_up {signal['probability_up']:.0%}",
-                    f"Do tin cay: {_vi_confidence(signal['confidence'])} | Rui ro: {_vi_risk(signal['risk_tier'])}",
-                    f"Nguon: {provider.get('provider_used')} | Chat luong data: {signal.get('data_quality')}",
+            [
+                f"Pulse50 {symbol}",
+                    f"Huong: {_trade_side(signal['direction'])} | xac suat tang {signal['probability_up']:.0%}",
+                f"Do tin cay: {_vi_confidence(signal['confidence'])} | Rui ro: {_vi_risk(signal['risk_tier'])}",
+                    f"Nguon: {_vi_provider(provider.get('provider_used'))} | Chat luong data: {_vi_data_quality(signal.get('data_quality'))}",
                     f"Gia vo hieu keo: {signal.get('invalidation_level')}",
-                    f"Ly do: {rationale}",
+                    f"Ly do: {_vi_rationale(rationale)}",
                     "",
                     _vi_disclaimer(),
                 ]
@@ -176,14 +176,14 @@ def format_status_response(response: dict[str, Any]) -> str:
     metrics = response.get("run_metrics", {})
     sources = response.get("data_sources", [])
     source_text = ", ".join(
-        f"{item.get('provider_used')}:{item.get('coverage_score')}" for item in sources
+        f"{_vi_provider(item.get('provider_used'))}:{item.get('coverage_score')}" for item in sources
     ) or "none"
     return "\n".join(
         [
             "Trang thai Pulse50",
             f"Model: {response.get('model_version')}",
             f"So coin quet: {response.get('universe', {}).get('actual_count')}",
-            f"Nguon data: {source_text}",
+            f"Nguon du lieu: {source_text}",
             f"Thoi gian chay: {metrics.get('total_run_time_seconds')}s",
             f"Canh bao: {len(response.get('warnings', []))}",
         ]
@@ -210,6 +210,46 @@ def _vi_liquidity(value: str | None) -> str:
         "poor": "Kem",
         "unknown": "Khong ro",
     }.get(str(value), str(value))
+
+
+def _vi_provider(value: str | None) -> str:
+    return {
+        "coinapi": "CoinAPI",
+        "coingecko": "CoinGecko",
+        "binance": "Binance",
+        "fixture": "Du lieu test",
+        None: "Khong co",
+    }.get(value, str(value))
+
+
+def _vi_data_quality(value: str | None) -> str:
+    return {
+        "OK": "Tot",
+        "no_orderbook": "Thieu order book",
+        "stale_cache": "Du lieu cache cu",
+        "provider_unavailable": "Khong co nguon du lieu",
+        "insufficient_data": "Thieu du lieu",
+        None: "Khong ro",
+    }.get(value, str(value))
+
+
+def _vi_rationale(text: str) -> str:
+    replacements = {
+        "RSI is oversold": "RSI dang qua ban",
+        "RSI is overbought": "RSI dang qua mua",
+        "MACD momentum is positive": "Dong luc MACD dang tich cuc",
+        "MACD momentum is negative": "Dong luc MACD dang tieu cuc",
+        "Order book bid imbalance is supportive": "Order book nghieng ve phe mua",
+        "Order book ask imbalance is heavy": "Order book nghieng ve phe ban",
+        "Short EMA slope is rising": "EMA ngan han dang doc len",
+        "Short EMA slope is falling": "EMA ngan han dang doc xuong",
+        "Volume is elevated versus recent baseline": "Volume cao hon nen gan day",
+        "BTC regime is weak, bullish score suppressed": "BTC dang yeu nen diem LONG bi giam",
+        "Neutral short-horizon feature mix": "Tin hieu ngan han dang trung tinh",
+    }
+    for source, target in replacements.items():
+        text = text.replace(source, target)
+    return text
 
 
 def _vi_disclaimer() -> str:
