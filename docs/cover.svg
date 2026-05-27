@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <rect width="1280" height="640" fill="#071014"/>
+  <rect x="72" y="70" width="1136" height="500" rx="28" fill="#0d1a20" stroke="#1f3b45"/>
+  <text x="112" y="150" fill="#e9fbff" font-family="Arial, sans-serif" font-size="64" font-weight="700">Pulse50</text>
+  <text x="112" y="202" fill="#88d8e8" font-family="Arial, sans-serif" font-size="28">Multi-Source Crypto Signal Engine</text>
+  <g transform="translate(112 270)">
+    <rect width="320" height="190" rx="18" fill="#10252d" stroke="#245563"/>
+    <text x="26" y="48" fill="#91f0b4" font-family="Arial, sans-serif" font-size="24" font-weight="700">BTC / USDT</text>
+    <text x="26" y="92" fill="#e9fbff" font-family="Arial, sans-serif" font-size="48" font-weight="700">UP 0.68</text>
+    <text x="26" y="136" fill="#b7c8ce" font-family="Arial, sans-serif" font-size="22">confidence high</text>
+  </g>
+  <g transform="translate(480 270)">
+    <rect width="320" height="190" rx="18" fill="#10252d" stroke="#245563"/>
+    <text x="26" y="48" fill="#88d8e8" font-family="Arial, sans-serif" font-size="24" font-weight="700">Provider Router</text>
+    <text x="26" y="92" fill="#e9fbff" font-family="Arial, sans-serif" font-size="34" font-weight="700">CoinAPI</text>
+    <text x="26" y="132" fill="#b7c8ce" font-family="Arial, sans-serif" font-size="22">fallbacks tracked</text>
+  </g>
+  <g transform="translate(848 270)">
+    <rect width="320" height="190" rx="18" fill="#10252d" stroke="#245563"/>
+    <text x="26" y="48" fill="#f6d36f" font-family="Arial, sans-serif" font-size="24" font-weight="700">Risk Layer</text>
+    <text x="26" y="92" fill="#e9fbff" font-family="Arial, sans-serif" font-size="34" font-weight="700">5 minute</text>
+    <text x="26" y="132" fill="#b7c8ce" font-family="Arial, sans-serif" font-size="22">research signals</text>
+  </g>
+  <path d="M112 520 C260 470 360 545 500 500 S735 455 875 505 1060 535 1168 492" fill="none" stroke="#55e6a5" stroke-width="5"/>
+</svg>

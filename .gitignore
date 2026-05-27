@@ -6,4 +6,5 @@ __pycache__/
 .pytest_cache/
 predictions.jsonl
 outcomes.jsonl
+calibration_report.csv
 *.log

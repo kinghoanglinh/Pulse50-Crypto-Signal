@@ -9,8 +9,8 @@ fallback provider; production routing can prefer normalized providers such as
 CoinAPI, then market-wide CoinGecko data, then exchange-specific Binance spot
 data when appropriate.
 
-The product is designed as a research signal tool, not a guaranteed prediction
-engine and not financial, investment, or trading advice.
+The product is designed as a research signal tool, not an assurance engine and
+not financial, investment, or trading advice.
 
 ## Build Status
 
@@ -35,6 +35,21 @@ def analyze_pulse50_crypto_signals(
 ) -> dict:
     ...
 ```
+
+## Output Schema
+
+The tool returns a JSON-serializable dictionary with:
+
+- `as_of`: ISO timestamp
+- `universe`: source, requested count, actual count, filters
+- `signals`: ranked signal objects with direction, probability, confidence,
+  risk tier, invalidation level, rationale, provider metadata, warnings, and
+  non-advice text
+- `summary`: human-readable top signal summary
+- `warnings`: provider, universe, stale-cache, and quality notes
+- `data_sources`: provider usage, fallback, coverage, freshness, and liquidity
+  metadata
+- `debug_features`: optional feature dictionary when requested
 
 ## Safety Positioning
 
@@ -65,3 +80,15 @@ Pulse50-Crypto-Signal/
   examples/
   docs/
 ```
+
+## Calibration
+
+Every run can append prediction rows to `predictions.jsonl`. Once 5-minute
+outcomes are available in `outcomes.jsonl`, run:
+
+```bash
+python evaluate.py
+```
+
+The evaluator prints hit rate, average realized return, Brier score, and
+confidence bucket counts, then writes `calibration_report.csv`.

@@ -26,6 +26,7 @@ class MainToolTests(unittest.TestCase):
                 ],
                 "warnings": [],
             },
+            _log_predictions=False,
         )
 
         self.assertEqual(response["universe"]["actual_count"], 2)

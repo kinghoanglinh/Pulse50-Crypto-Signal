@@ -11,6 +11,7 @@ from pulse50.config import MODEL_VERSION, NOT_ADVICE
 from pulse50.engine.features import compute_features, compute_regime_context
 from pulse50.engine.risk import apply_risk_controls
 from pulse50.engine.signal import generate_signal, rank_signals
+from pulse50.logging import append_predictions
 from pulse50.schema.output import validate_response
 
 
@@ -23,6 +24,7 @@ def analyze_pulse50_crypto_signals(
     risk_mode: str = "balanced",
     _router: ProviderRouter | None = None,
     _universe_payload: dict[str, Any] | None = None,
+    _log_predictions: bool = True,
 ) -> dict:
     """Analyze top crypto assets for probabilistic 5-minute research signals."""
     warnings: list[str] = []
@@ -91,7 +93,10 @@ def analyze_pulse50_crypto_signals(
         "data_sources": _data_sources(ranked_signals),
         "debug_features": debug_features if include_debug_features else None,
     }
-    return validate_response(payload)
+    validated = validate_response(payload)
+    if _log_predictions:
+        append_predictions(validated)
+    return validated
 
 
 def _summary(signals: list[dict[str, Any]]) -> str:
