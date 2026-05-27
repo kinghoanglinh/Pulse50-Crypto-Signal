@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from time import perf_counter
 from typing import Any
 
 from pulse50.adapters.market_data import AssetMarketData, ProviderRouter
@@ -28,6 +29,7 @@ def analyze_pulse50_crypto_signals(
 ) -> dict:
     """Analyze top crypto assets for probabilistic 5-minute research signals."""
     warnings: list[str] = []
+    started_at = perf_counter()
     if horizon_minutes != 5:
         warnings.append("horizon_minutes must equal 5 in v1; proceeding with 5")
         horizon_minutes = 5
@@ -54,11 +56,14 @@ def analyze_pulse50_crypto_signals(
     router = _router or ProviderRouter()
 
     market_data_by_symbol: dict[str, AssetMarketData] = {}
+    provider_latencies: dict[str, float] = {}
     for asset in assets:
         symbol = str(asset.get("symbol", "")).upper()
         if not symbol:
             continue
+        asset_started_at = perf_counter()
         data = router.get_asset_market_data(symbol, quote_asset=quote_asset)
+        provider_latencies[symbol] = round(perf_counter() - asset_started_at, 4)
         market_data_by_symbol[symbol] = data
         warnings.extend(data.warnings)
 
@@ -88,6 +93,11 @@ def analyze_pulse50_crypto_signals(
         "signals": ranked_signals,
         "summary": _summary(ranked_signals),
         "warnings": warnings,
+        "run_metrics": _run_metrics(
+            market_data_by_symbol=market_data_by_symbol,
+            provider_latencies=provider_latencies,
+            started_at=started_at,
+        ),
         "not_advice": NOT_ADVICE,
         "model_version": MODEL_VERSION,
         "data_sources": _data_sources(ranked_signals),
@@ -123,6 +133,25 @@ def _data_sources(signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
         seen.add(key)
         sources.append(provider)
     return sources
+
+
+def _run_metrics(
+    market_data_by_symbol: dict[str, AssetMarketData],
+    provider_latencies: dict[str, float],
+    started_at: float,
+) -> dict[str, Any]:
+    provider_costs = {"coinapi": 3, "coingecko": 1, "binance": 4, "fixture": 0, None: 0}
+    missing_pairs = sum(1 for data in market_data_by_symbol.values() if not data.supported)
+    stale_count = sum(1 for data in market_data_by_symbol.values() if data.data_quality == "stale_cache")
+    estimated_cost = sum(provider_costs.get(data.provider_used, 1) for data in market_data_by_symbol.values())
+    return {
+        "provider_latency_seconds": provider_latencies,
+        "missing_pairs_count": missing_pairs,
+        "stale_market_data_count": stale_count,
+        "estimated_provider_weight_or_credits": estimated_cost,
+        "total_run_time_seconds": round(perf_counter() - started_at, 4),
+        "model_version": MODEL_VERSION,
+    }
 
 
 if __name__ == "__main__":

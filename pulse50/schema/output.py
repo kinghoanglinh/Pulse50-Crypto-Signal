@@ -56,6 +56,7 @@ if BaseModel is not None:
         signals: list[SignalItem]
         summary: str
         warnings: list[str]
+        run_metrics: dict[str, Any] = Field(default_factory=dict)
         not_advice: str
         model_version: str
         data_sources: list[ProviderMeta] = Field(default_factory=list)

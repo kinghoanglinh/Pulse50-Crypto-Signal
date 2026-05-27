@@ -33,6 +33,7 @@ class MainToolTests(unittest.TestCase):
         self.assertEqual(len(response["signals"]), 2)
         self.assertIn("Top Pulse50 signals", response["summary"])
         self.assertIn("BTC", response["debug_features"])
+        self.assertEqual(response["run_metrics"]["estimated_provider_weight_or_credits"], 0)
         self.assertIn("not_advice", response)
 
 
