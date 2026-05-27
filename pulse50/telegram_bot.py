@@ -142,9 +142,11 @@ def format_scan_response(response: dict[str, Any], limit: int = 5) -> str:
         lines.extend(
             [
                 f"{signal['rank']}. {signal['symbol']} | {side} | xac suat tang {signal['probability_up']:.0%}",
+                f"Gia hien tai: {_fmt_price(signal.get('current_price'))}",
+                f"Take Profit tham khao: {_fmt_price(_take_profit_price(signal))}",
+                f"Stop Loss tham khao: {_fmt_price(signal.get('invalidation_level'))}",
                 f"Do tin cay: {_vi_confidence(signal['confidence'])} | Rui ro: {_vi_risk(signal['risk_tier'])}",
                 f"Nguon: {provider.get('provider_used')} | Thanh khoan: {_vi_liquidity(provider.get('liquidity_quality'))}",
-                f"Gia vo hieu keo: {signal.get('invalidation_level')}",
                 "",
             ]
         )
@@ -159,11 +161,13 @@ def format_coin_response(response: dict[str, Any], symbol: str) -> str:
             rationale = "; ".join(signal.get("rationale", []))
             return "\n".join(
             [
-                f"Pulse50 {symbol}",
+                    f"Pulse50 {symbol}",
                     f"Huong: {_trade_side(signal['direction'])} | xac suat tang {signal['probability_up']:.0%}",
-                f"Do tin cay: {_vi_confidence(signal['confidence'])} | Rui ro: {_vi_risk(signal['risk_tier'])}",
+                    f"Gia hien tai: {_fmt_price(signal.get('current_price'))}",
+                    f"Take Profit tham khao: {_fmt_price(_take_profit_price(signal))}",
+                    f"Stop Loss tham khao: {_fmt_price(signal.get('invalidation_level'))}",
+                    f"Do tin cay: {_vi_confidence(signal['confidence'])} | Rui ro: {_vi_risk(signal['risk_tier'])}",
                     f"Nguon: {_vi_provider(provider.get('provider_used'))} | Chat luong data: {_vi_data_quality(signal.get('data_quality'))}",
-                    f"Gia vo hieu keo: {signal.get('invalidation_level')}",
                     f"Ly do: {_vi_rationale(rationale)}",
                     "",
                     _vi_disclaimer(),
@@ -254,6 +258,34 @@ def _vi_rationale(text: str) -> str:
 
 def _vi_disclaimer() -> str:
     return "Tin hieu chi dung cho nghien cuu. Khong phai loi khuyen tai chinh hay lenh vao vi the."
+
+
+def _take_profit_price(signal: dict[str, Any]) -> float | None:
+    current_price = signal.get("current_price")
+    expected_range = signal.get("expected_return_range_pct") or (None, None)
+    direction = signal.get("direction")
+    if current_price is None or direction == "FLAT":
+        return None
+    low_pct, high_pct = expected_range
+    if direction == "UP" and high_pct is not None:
+        return float(current_price) * (1 + (float(high_pct) / 100))
+    if direction == "DOWN" and low_pct is not None:
+        return float(current_price) * (1 + (float(low_pct) / 100))
+    return None
+
+
+def _fmt_price(value: Any) -> str:
+    if value is None:
+        return "Khong co"
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if number >= 100:
+        return f"{number:.2f}"
+    if number >= 1:
+        return f"{number:.4f}"
+    return f"{number:.8f}"
 
 
 def main() -> None:

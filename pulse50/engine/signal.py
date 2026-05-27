@@ -64,6 +64,7 @@ def generate_signal(features: dict[str, Any]) -> dict[str, Any]:
         "rank": None,
         "symbol": features["symbol"],
         "pair": features.get("pair"),
+        "current_price": features.get("current_price"),
         "direction": direction,
         "probability_up": probability_up,
         "expected_return_range_pct": expected_range,

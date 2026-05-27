@@ -10,8 +10,10 @@ class TelegramFormatterTests(unittest.TestCase):
                 {
                     "rank": 1,
                     "symbol": "SOL",
+                    "current_price": 83.5,
                     "direction": "UP",
                     "probability_up": 0.62,
+                    "expected_return_range_pct": (0.1, 0.25),
                     "confidence": "Medium",
                     "risk_tier": "Low",
                     "invalidation_level": 83.34,
@@ -26,6 +28,9 @@ class TelegramFormatterTests(unittest.TestCase):
         self.assertIn("Pulse50 Top Keo 5 Phut", text)
         self.assertIn("SOL | LONG", text)
         self.assertIn("xac suat tang", text)
+        self.assertIn("Gia hien tai", text)
+        self.assertIn("Take Profit tham khao", text)
+        self.assertIn("Stop Loss tham khao", text)
         self.assertIn("Tin hieu chi dung cho nghien cuu", text)
 
     def test_format_coin_response(self):
@@ -33,8 +38,10 @@ class TelegramFormatterTests(unittest.TestCase):
             "signals": [
                 {
                     "symbol": "BTC",
+                    "current_price": 100000.0,
                     "direction": "FLAT",
                     "probability_up": 0.5,
+                    "expected_return_range_pct": (-0.1, 0.1),
                     "confidence": "Low",
                     "risk_tier": "Low",
                     "data_quality": "no_orderbook",

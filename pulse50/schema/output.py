@@ -29,6 +29,7 @@ if BaseModel is not None:
         rank: int | None
         symbol: str
         pair: str | None
+        current_price: float | None = None
         direction: Literal["UP", "DOWN", "FLAT"]
         probability_up: float = Field(ge=0.0, le=1.0)
         expected_return_range_pct: tuple[float, float]
