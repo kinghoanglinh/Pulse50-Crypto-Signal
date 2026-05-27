@@ -3,6 +3,7 @@ import unittest
 from pulse50.adapters.market_data import (
     AssetMarketData,
     BinanceProvider,
+    CoinGeckoProvider,
     CoinAPIProvider,
     MarketDataProviderError,
     ProviderCapability,
@@ -264,6 +265,27 @@ class BinanceProviderTests(unittest.TestCase):
         self.assertAlmostEqual(result.order_book["spread_pct"], 0.015384615384617082)
         self.assertEqual(result.liquidity_quality, "excellent")
         self.assertEqual(result.coverage_score, 0.8)
+
+
+class MockCoinGeckoSession:
+    def get(self, url, headers=None, params=None, timeout=10):
+        prices = [[1779876000000 + index * 300000, 100 + index] for index in range(30)]
+        volumes = [[row[0], 1000 + index] for index, row in enumerate(prices)]
+        return MockResponse(200, {"prices": prices, "total_volumes": volumes})
+
+
+class CoinGeckoProviderTests(unittest.TestCase):
+    def test_fetches_market_chart_fallback_without_order_book(self):
+        provider = CoinGeckoProvider(session=MockCoinGeckoSession())
+
+        result = provider.get_asset_market_data("btc")
+
+        self.assertTrue(result.supported)
+        self.assertEqual(result.provider_used, "coingecko")
+        self.assertEqual(result.data_quality, "no_orderbook")
+        self.assertEqual(result.liquidity_quality, "unknown")
+        self.assertEqual(len(result.ohlcv_1m), 30)
+        self.assertEqual(len(result.ohlcv_5m), 10)
 
 
 if __name__ == "__main__":

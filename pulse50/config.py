@@ -15,6 +15,7 @@ load_dotenv()
 COINGECKO_API_KEY = os.getenv("COINGECKO_API_KEY", "")
 COINMARKETCAP_API_KEY = os.getenv("COINMARKETCAP_API_KEY", "")
 COINAPI_API_KEY = os.getenv("COINAPI_API_KEY", "")
+COINGECKO_BASE_URL = os.getenv("COINGECKO_BASE_URL", "https://api.coingecko.com/api/v3")
 BINANCE_BASE_URL = os.getenv("BINANCE_BASE_URL", "https://api.binance.com")
 COINAPI_BASE_URL = os.getenv("COINAPI_BASE_URL", "https://rest.coinapi.io")
 

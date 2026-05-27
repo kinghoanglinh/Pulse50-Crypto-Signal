@@ -15,6 +15,8 @@ from pulse50.config import (
     BINANCE_BASE_URL,
     COINAPI_API_KEY,
     COINAPI_BASE_URL,
+    COINGECKO_API_KEY,
+    COINGECKO_BASE_URL,
     PROVIDER_PRIORITY,
 )
 from pulse50.cache.store import CACHE_TTLS, TTLCache, default_cache
@@ -220,8 +222,86 @@ class CoinGeckoProvider:
         normalized_multi_exchange=True,
     )
 
+    symbol_ids = {
+        "BTC": "bitcoin",
+        "ETH": "ethereum",
+        "SOL": "solana",
+        "BNB": "binancecoin",
+        "XRP": "ripple",
+        "ADA": "cardano",
+        "DOGE": "dogecoin",
+        "TRX": "tron",
+        "LINK": "chainlink",
+        "AVAX": "avalanche-2",
+        "SUI": "sui",
+        "TON": "the-open-network",
+        "SHIB": "shiba-inu",
+        "DOT": "polkadot",
+        "BCH": "bitcoin-cash",
+        "LTC": "litecoin",
+        "NEAR": "near",
+        "UNI": "uniswap",
+        "APT": "aptos",
+        "ICP": "internet-computer",
+    }
+
+    def __init__(
+        self,
+        base_url: str = COINGECKO_BASE_URL,
+        api_key: str = COINGECKO_API_KEY,
+        session: Any | None = None,
+    ):
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.session = session or requests
+
     def get_asset_market_data(self, symbol: str, quote_asset: str = "USDT") -> AssetMarketData:
-        raise MarketDataProviderError("coingecko live market-data fetching is not implemented yet")
+        if self.session is None:
+            raise MarketDataProviderError("requests is not installed")
+        coingecko_id = self.symbol_ids.get(symbol.upper())
+        if not coingecko_id:
+            raise MarketDataProviderError(f"no coingecko id mapping for {symbol.upper()}")
+        quote_currency = "usd" if quote_asset.upper() in {"USDT", "USD"} else quote_asset.lower()
+        payload = self._get(
+            f"/coins/{coingecko_id}/market_chart",
+            params={"vs_currency": quote_currency, "days": "1"},
+        )
+        prices = payload.get("prices", []) if isinstance(payload, dict) else []
+        volumes = payload.get("total_volumes", []) if isinstance(payload, dict) else []
+        if len(prices) < 10:
+            raise MarketDataProviderError("insufficient coingecko price points")
+
+        ohlcv = _coingecko_prices_to_candles(prices, volumes)
+        latest = ohlcv[-1]
+        return AssetMarketData(
+            symbol=symbol.upper(),
+            quote_asset=quote_asset.upper(),
+            pair=f"{coingecko_id}/{quote_currency}",
+            supported=True,
+            provider_used=self.capability.name,
+            coverage_score=0.75,
+            data_freshness_seconds=_freshness_seconds(latest.get("timestamp")),
+            liquidity_quality="unknown",
+            ohlcv_1m=ohlcv[-30:],
+            ohlcv_5m=ohlcv[-10:],
+            ticker={"last_price": latest.get("close"), "last_volume": latest.get("volume")},
+            order_book={},
+            data_quality="no_orderbook",
+            warnings=["coingecko fallback has no order book data"],
+        )
+
+    def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
+        headers = {}
+        if self.api_key:
+            headers["x-cg-pro-api-key"] = self.api_key
+        response = self.session.get(f"{self.base_url}{path}", headers=headers, params=params or {}, timeout=10)
+        if response.status_code == 404:
+            raise MarketDataProviderError("asset not found")
+        if response.status_code == 429:
+            raise MarketDataProviderError("rate limit reached")
+        if response.status_code >= 400:
+            raise MarketDataProviderError(f"http {response.status_code}")
+        return response.json()
 
 
 class BinanceProvider:
@@ -463,6 +543,31 @@ def _normalize_binance_order_book(payload: dict[str, Any]) -> dict[str, Any]:
         for price, size in payload.get("asks", [])
     ]
     return _order_book_metrics(bids=bids, asks=asks, timestamp=None)
+
+
+def _coingecko_prices_to_candles(
+    prices: list[list[Any]],
+    volumes: list[list[Any]],
+) -> list[dict[str, Any]]:
+    volume_by_ts = {int(row[0]): float(row[1]) for row in volumes if len(row) >= 2}
+    candles = []
+    for row in prices:
+        if len(row) < 2:
+            continue
+        timestamp_ms = int(row[0])
+        price = float(row[1])
+        candles.append(
+            {
+                "timestamp": datetime.fromtimestamp(timestamp_ms / 1000, tz=UTC).isoformat(),
+                "open": price,
+                "high": price,
+                "low": price,
+                "close": price,
+                "volume": volume_by_ts.get(timestamp_ms, 0.0),
+                "trades_count": 0,
+            }
+        )
+    return candles
 
 
 def _freshness_seconds(timestamp: Any) -> float | None:
