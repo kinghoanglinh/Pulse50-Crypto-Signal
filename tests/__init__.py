@@ -1,0 +1,1 @@
+"""Pulse50 tests."""
