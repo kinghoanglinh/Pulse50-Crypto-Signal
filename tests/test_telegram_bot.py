@@ -25,13 +25,14 @@ class TelegramFormatterTests(unittest.TestCase):
 
         text = format_scan_response(response)
 
-        self.assertIn("Pulse50 Top Keo 5 Phut", text)
-        self.assertIn("SOL | LONG", text)
-        self.assertIn("xac suat tang", text)
+        self.assertIn("Pulse50 Du Doan Up/Down 5 Phut", text)
+        self.assertIn("SOL | Du doan: UP", text)
+        self.assertIn("Xac suat tang", text)
         self.assertIn("Gia hien tai", text)
-        self.assertIn("Take Profit tham khao", text)
-        self.assertIn("Stop Loss tham khao", text)
-        self.assertIn("Tin hieu chi dung cho nghien cuu", text)
+        self.assertIn("Moc gia ky vong", text)
+        self.assertIn("Moc vo hieu du doan", text)
+        self.assertIn("Nguon realtime", text)
+        self.assertIn("Tin hieu chi dung cho prediction market", text)
 
     def test_format_coin_response(self):
         response = {
@@ -55,7 +56,7 @@ class TelegramFormatterTests(unittest.TestCase):
         text = format_coin_response(response, "BTC")
 
         self.assertIn("Pulse50 BTC", text)
-        self.assertIn("Huong: DUNG NGOAI", text)
+        self.assertIn("Du doan 5 phut: BO QUA", text)
         self.assertIn("Tin hieu ngan han dang trung tinh", text)
 
     def test_format_status_response(self):

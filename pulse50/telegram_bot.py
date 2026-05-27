@@ -25,13 +25,13 @@ except ImportError:  # pragma: no cover - import behavior is environment-specifi
 
 
 HELP_TEXT = """Lenh Pulse50:
-/scan - quet nhanh top 5 keo
-/top [n] - xem top n keo, vi du /top 10
+/scan - quet nhanh top 5 du doan Up/Down 5 phut
+/top [n] - xem top n du doan, vi du /top 10
 /coin SYMBOL - xem rieng 1 coin, vi du /coin SOL
 /status - xem trang thai nguon du lieu/thoi gian chay
 /help - xem danh sach lenh
 
-Tin hieu chi dung cho nghien cuu. Khong phai loi khuyen tai chinh hay lenh vao vi the."""
+Tin hieu chi dung cho prediction market 5 phut va nghien cuu. Khong phai loi khuyen tai chinh."""
 
 logger = logging.getLogger(__name__)
 
@@ -112,8 +112,8 @@ async def set_bot_commands(app) -> None:
     await app.bot.set_my_commands(
         [
             BotCommand("start", "Bat dau dung Pulse50"),
-            BotCommand("scan", "Quet nhanh top 5 keo"),
-            BotCommand("top", "Xem top n keo"),
+            BotCommand("scan", "Quet nhanh top 5 du doan"),
+            BotCommand("top", "Xem top n du doan"),
             BotCommand("coin", "Xem rieng 1 coin"),
             BotCommand("status", "Trang thai bot/nguon data"),
             BotCommand("help", "Huong dan lenh"),
@@ -133,20 +133,22 @@ def _parse_limit(args: list[str], default: int) -> int:
 def format_scan_response(response: dict[str, Any], limit: int = 5) -> str:
     signals = [signal for signal in response.get("signals", []) if not signal.get("suppressed")]
     if not signals:
-        return "Pulse50 da quet xong.\nChua co keo nao dat quality/risk controls.\n\n" + _vi_disclaimer()
+        return "Pulse50 da quet xong.\nChua co du doan nao dat quality/risk controls.\n\n" + _vi_disclaimer()
 
-    lines = ["Pulse50 Top Keo 5 Phut", ""]
+    lines = ["Pulse50 Du Doan Up/Down 5 Phut", ""]
     for signal in signals[:limit]:
         provider = signal.get("provider", {})
-        side = _trade_side(signal.get("direction"))
+        side = _prediction_side(signal.get("direction"))
         lines.extend(
             [
-                f"{signal['rank']}. {signal['symbol']} | {side} | xac suat tang {signal['probability_up']:.0%}",
+                f"{signal['rank']}. {signal['symbol']} | Du doan: {side}",
+                f"Xac suat tang: {signal['probability_up']:.0%}",
                 f"Gia hien tai: {_fmt_price(signal.get('current_price'))}",
-                f"Take Profit tham khao: {_fmt_price(_take_profit_price(signal))}",
-                f"Stop Loss tham khao: {_fmt_price(signal.get('invalidation_level'))}",
+                f"Moc gia ky vong: {_fmt_price(_target_price(signal))}",
+                f"Moc vo hieu du doan: {_fmt_price(signal.get('invalidation_level'))}",
                 f"Do tin cay: {_vi_confidence(signal['confidence'])} | Rui ro: {_vi_risk(signal['risk_tier'])}",
-                f"Nguon: {provider.get('provider_used')} | Thanh khoan: {_vi_liquidity(provider.get('liquidity_quality'))}",
+                f"Nguon realtime: {_vi_provider(provider.get('provider_used'))} | Do tre: {_fmt_age(provider.get('data_freshness_seconds'))}",
+                f"Thanh khoan: {_vi_liquidity(provider.get('liquidity_quality'))}",
                 "",
             ]
         )
@@ -160,14 +162,16 @@ def format_coin_response(response: dict[str, Any], symbol: str) -> str:
             provider = signal.get("provider", {})
             rationale = "; ".join(signal.get("rationale", []))
             return "\n".join(
-            [
+                [
                     f"Pulse50 {symbol}",
-                    f"Huong: {_trade_side(signal['direction'])} | xac suat tang {signal['probability_up']:.0%}",
+                    f"Du doan 5 phut: {_prediction_side(signal['direction'])}",
+                    f"Xac suat tang: {signal['probability_up']:.0%}",
                     f"Gia hien tai: {_fmt_price(signal.get('current_price'))}",
-                    f"Take Profit tham khao: {_fmt_price(_take_profit_price(signal))}",
-                    f"Stop Loss tham khao: {_fmt_price(signal.get('invalidation_level'))}",
+                    f"Moc gia ky vong: {_fmt_price(_target_price(signal))}",
+                    f"Moc vo hieu du doan: {_fmt_price(signal.get('invalidation_level'))}",
                     f"Do tin cay: {_vi_confidence(signal['confidence'])} | Rui ro: {_vi_risk(signal['risk_tier'])}",
-                    f"Nguon: {_vi_provider(provider.get('provider_used'))} | Chat luong data: {_vi_data_quality(signal.get('data_quality'))}",
+                    f"Nguon realtime: {_vi_provider(provider.get('provider_used'))} | Do tre: {_fmt_age(provider.get('data_freshness_seconds'))}",
+                    f"Chat luong data: {_vi_data_quality(signal.get('data_quality'))}",
                     f"Ly do: {_vi_rationale(rationale)}",
                     "",
                     _vi_disclaimer(),
@@ -194,8 +198,8 @@ def format_status_response(response: dict[str, Any]) -> str:
     )
 
 
-def _trade_side(direction: str | None) -> str:
-    return {"UP": "LONG", "DOWN": "SHORT", "FLAT": "DUNG NGOAI"}.get(str(direction), "DUNG NGOAI")
+def _prediction_side(direction: str | None) -> str:
+    return {"UP": "UP", "DOWN": "DOWN", "FLAT": "BO QUA"}.get(str(direction), "BO QUA")
 
 
 def _vi_confidence(value: str) -> str:
@@ -248,7 +252,7 @@ def _vi_rationale(text: str) -> str:
         "Short EMA slope is rising": "EMA ngan han dang doc len",
         "Short EMA slope is falling": "EMA ngan han dang doc xuong",
         "Volume is elevated versus recent baseline": "Volume cao hon nen gan day",
-        "BTC regime is weak, bullish score suppressed": "BTC dang yeu nen diem LONG bi giam",
+        "BTC regime is weak, bullish score suppressed": "BTC dang yeu nen diem UP bi giam",
         "Neutral short-horizon feature mix": "Tin hieu ngan han dang trung tinh",
     }
     for source, target in replacements.items():
@@ -257,10 +261,10 @@ def _vi_rationale(text: str) -> str:
 
 
 def _vi_disclaimer() -> str:
-    return "Tin hieu chi dung cho nghien cuu. Khong phai loi khuyen tai chinh hay lenh vao vi the."
+    return "Tin hieu chi dung cho prediction market 5 phut va nghien cuu. Khong phai loi khuyen tai chinh."
 
 
-def _take_profit_price(signal: dict[str, Any]) -> float | None:
+def _target_price(signal: dict[str, Any]) -> float | None:
     current_price = signal.get("current_price")
     expected_range = signal.get("expected_return_range_pct") or (None, None)
     direction = signal.get("direction")
@@ -286,6 +290,18 @@ def _fmt_price(value: Any) -> str:
     if number >= 1:
         return f"{number:.4f}"
     return f"{number:.8f}"
+
+
+def _fmt_age(value: Any) -> str:
+    if value is None:
+        return "Khong ro"
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if seconds < 60:
+        return f"{seconds:.0f}s"
+    return f"{seconds / 60:.1f} phut"
 
 
 def main() -> None:

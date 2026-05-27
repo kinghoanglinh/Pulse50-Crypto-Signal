@@ -25,7 +25,7 @@ DEFAULT_UNIVERSE_SIZE = 50
 DEFAULT_QUOTE_ASSET = "USDT"
 DEFAULT_HORIZON_MINUTES = 5
 MODEL_VERSION = "v1.0-rules"
-PROVIDER_PRIORITY = ("coinapi", "coingecko", "binance")
+PROVIDER_PRIORITY = ("binance", "coinapi", "coingecko")
 NOT_ADVICE = (
     "Research signal only. Not financial, investment, or trading advice. "
     "Past signals do not guarantee future results."
