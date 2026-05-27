@@ -87,6 +87,7 @@ Every run can append prediction rows to `predictions.jsonl`. Once 5-minute
 outcomes are available in `outcomes.jsonl`, run:
 
 ```bash
+python record_outcomes.py
 python evaluate.py
 ```
 
