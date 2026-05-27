@@ -18,6 +18,17 @@ DEFAULT_MARKET_PAGE_SIZE = 250
 STABLECOIN_SYMBOLS = {
     "usdt",
     "usdc",
+    "usds",
+    "usdl",
+    "usd1",
+    "usdy",
+    "usda",
+    "usdm",
+    "usdx",
+    "usyc",
+    "rlusd",
+    "eurc",
+    "eurt",
     "dai",
     "fdusd",
     "tusd",
@@ -45,6 +56,8 @@ def is_stablecoin(asset: dict[str, Any]) -> bool:
     if symbol in STABLECOIN_SYMBOLS:
         return True
     if "stablecoin" in name:
+        return True
+    if symbol.startswith("usd") and len(symbol) <= 6:
         return True
     if symbol.endswith("usd") and len(symbol) <= 6:
         return True

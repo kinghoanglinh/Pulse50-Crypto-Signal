@@ -1,6 +1,5 @@
 import unittest
 
-from pulse50.config import NOT_ADVICE
 from pulse50.telegram_bot import format_coin_response, format_scan_response, format_status_response
 
 
@@ -24,9 +23,9 @@ class TelegramFormatterTests(unittest.TestCase):
 
         text = format_scan_response(response)
 
-        self.assertIn("Pulse50 Top Signals", text)
-        self.assertIn("SOL UP", text)
-        self.assertIn(NOT_ADVICE, text)
+        self.assertIn("Pulse50 Top Keo 5 Phut", text)
+        self.assertIn("SOL | LONG", text)
+        self.assertIn("Tin hieu chi dung cho nghien cuu", text)
 
     def test_format_coin_response(self):
         response = {
@@ -48,7 +47,7 @@ class TelegramFormatterTests(unittest.TestCase):
         text = format_coin_response(response, "BTC")
 
         self.assertIn("Pulse50 BTC", text)
-        self.assertIn("Direction: FLAT", text)
+        self.assertIn("Huong: DUNG NGOAI", text)
 
     def test_format_status_response(self):
         response = {
@@ -61,7 +60,7 @@ class TelegramFormatterTests(unittest.TestCase):
 
         text = format_status_response(response)
 
-        self.assertIn("Pulse50 Status", text)
+        self.assertIn("Trang thai Pulse50", text)
         self.assertIn("coinapi:1.0", text)
 
 
