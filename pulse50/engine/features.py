@@ -26,11 +26,15 @@ def compute_features(
         "return_1m": _pct_change(closes, 1),
         "return_3m": _pct_change(closes, 3),
         "return_5m": _pct_change(closes, 5),
+        "return_15m": _pct_change(closes, 15),
         "ema_slope_5": _ema_slope(closes, period=5, lookback=3),
+        "ema_slope_15": _ema_slope(closes, period=10, lookback=5),
         "rsi_14": _rsi(closes, period=14),
         "macd_signal": _macd_histogram_sign(closes),
         "atr_5m": _atr_pct(market_data.ohlcv_5m, period=5),
+        "atr_15m": _atr_pct(market_data.ohlcv_5m, period=3),
         "realized_vol_5m": stdev(returns[-5:]) if len(returns) >= 5 else None,
+        "realized_vol_15m": stdev(returns[-15:]) if len(returns) >= 15 else None,
         "volume_spike": _volume_spike(volumes),
         "taker_buy_ratio": _taker_buy_ratio(market_data.ohlcv_1m[-1] if market_data.ohlcv_1m else {}),
         "spread_pct": market_data.order_book.get("spread_pct"),
@@ -40,12 +44,12 @@ def compute_features(
         "coverage_score": market_data.coverage_score,
         "liquidity_quality": market_data.liquidity_quality,
         "data_freshness_seconds": market_data.data_freshness_seconds,
-        "btc_5m_return": None,
-        "eth_5m_return": None,
+        "btc_15m_return": None,
+        "eth_15m_return": None,
     }
     if regime_context:
-        features["btc_5m_return"] = regime_context.get("BTC")
-        features["eth_5m_return"] = regime_context.get("ETH")
+        features["btc_15m_return"] = regime_context.get("BTC")
+        features["eth_15m_return"] = regime_context.get("ETH")
     return features
 
 
@@ -53,7 +57,7 @@ def compute_regime_context(market_data_by_symbol: dict[str, AssetMarketData]) ->
     return {
         symbol: _pct_change(
             [float(candle["close"]) for candle in data.ohlcv_1m if candle.get("close") is not None],
-            5,
+            15,
         )
         for symbol, data in market_data_by_symbol.items()
         if symbol in {"BTC", "ETH"}

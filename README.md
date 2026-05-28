@@ -1,7 +1,7 @@
 # Pulse50 Multi-Source Crypto Signal Engine
 
 Pulse50 Crypto Signal is a production-oriented Swarms Marketplace tool for
-probabilistic 5-minute Up/Down prediction signals across BTC, ETH, and SOL.
+probabilistic 15-minute Up/Down prediction signals across BTC, ETH, and SOL.
 
 The product is designed as a multi-source signal engine. Binance is only one
 fallback provider; production routing can prefer normalized providers such as
@@ -27,7 +27,7 @@ docs/Pulse50_Crypto_Signal_BRD_v1.1.locked.docx
 def analyze_pulse50_crypto_signals(
     universe_size: int = 50,
     exclude_stablecoins: bool = True,
-    horizon_minutes: int = 5,
+    horizon_minutes: int = 15,
     quote_asset: str = "USDT",
     include_debug_features: bool = False,
     risk_mode: str = "balanced",
@@ -83,7 +83,7 @@ Pulse50-Crypto-Signal/
 
 ## Calibration
 
-Every run can append prediction rows to `predictions.jsonl`. Once 5-minute
+Every run can append prediction rows to `predictions.jsonl`. Once 15-minute
 outcomes are available in `outcomes.jsonl`, run:
 
 ```bash

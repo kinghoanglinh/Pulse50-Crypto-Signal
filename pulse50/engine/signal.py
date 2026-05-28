@@ -11,9 +11,9 @@ def generate_signal(features: dict[str, Any]) -> dict[str, Any]:
     rationale: list[str] = []
 
     for field, threshold, weight, label_up, label_down in (
-        ("return_1m", 0.03, 0.4, "1m momentum is positive", "1m momentum is negative"),
-        ("return_3m", 0.08, 0.5, "3m momentum is positive", "3m momentum is negative"),
-        ("return_5m", 0.12, 0.5, "5m momentum is positive", "5m momentum is negative"),
+        ("return_3m", 0.08, 0.25, "3m momentum is positive", "3m momentum is negative"),
+        ("return_5m", 0.12, 0.45, "5m momentum is positive", "5m momentum is negative"),
+        ("return_15m", 0.18, 0.75, "15m momentum is positive", "15m momentum is negative"),
     ):
         value = features.get(field)
         if value is None:
@@ -50,24 +50,24 @@ def generate_signal(features: dict[str, Any]) -> dict[str, Any]:
             score -= 0.5
             rationale.append("Order book ask imbalance is heavy")
 
-    ema_slope = features.get("ema_slope_5")
+    ema_slope = features.get("ema_slope_15")
     if ema_slope is not None:
         if ema_slope > 0:
             score += 0.5
-            rationale.append("Short EMA slope is rising")
+            rationale.append("15m EMA slope is rising")
         elif ema_slope < 0:
             score -= 0.5
-            rationale.append("Short EMA slope is falling")
+            rationale.append("15m EMA slope is falling")
 
     volume_spike = features.get("volume_spike")
     if volume_spike and volume_spike > 1.5:
         score *= 1.2
         rationale.append("Volume is elevated versus recent baseline")
 
-    btc_regime = features.get("btc_5m_return")
+    btc_regime = features.get("btc_15m_return")
     if btc_regime is not None and btc_regime < -0.3 and score > 0:
         score *= 0.5
-        rationale.append("BTC regime is weak, bullish score suppressed")
+        rationale.append("BTC 15m regime is weak, UP score suppressed")
 
     probability_up = _score_to_probability(score)
     direction = "UP" if probability_up > 0.55 else "DOWN" if probability_up < 0.45 else "FLAT"
@@ -135,7 +135,7 @@ def _confidence(probability_up: float, features: dict[str, Any]) -> str:
 
 
 def _risk_tier(features: dict[str, Any]) -> str:
-    vol = max(features.get("atr_5m") or 0, features.get("realized_vol_5m") or 0)
+    vol = max(features.get("atr_15m") or 0, features.get("realized_vol_15m") or 0)
     if vol < 0.4:
         return "Low"
     if vol < 0.9:
@@ -146,7 +146,7 @@ def _risk_tier(features: dict[str, Any]) -> str:
 
 
 def _expected_return_range(features: dict[str, Any], direction: str) -> tuple[float, float]:
-    atr = features.get("atr_5m") or features.get("realized_vol_5m") or 0.2
+    atr = features.get("atr_15m") or features.get("realized_vol_15m") or 0.2
     low = round(atr * 0.8, 4)
     high = round(atr * 1.5, 4)
     if direction == "DOWN":
@@ -158,7 +158,7 @@ def _expected_return_range(features: dict[str, Any], direction: str) -> tuple[fl
 
 def _invalidation_level(features: dict[str, Any], direction: str) -> float | None:
     price = features.get("current_price")
-    atr_pct = features.get("atr_5m")
+    atr_pct = features.get("atr_15m")
     if not price or atr_pct is None:
         return None
     delta = price * (atr_pct / 100)

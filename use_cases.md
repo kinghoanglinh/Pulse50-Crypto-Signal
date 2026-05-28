@@ -10,4 +10,4 @@ Generate a normalized top-asset watchlist every few minutes with data source, fr
 
 ## Signal QA And Calibration
 
-Log predictions and compare them against 5-minute outcomes to evaluate hit rate, Brier score, realized return, and confidence bucket quality.
+Log predictions and compare them against 15-minute outcomes to evaluate hit rate, Brier score, realized return, and confidence bucket quality.

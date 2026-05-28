@@ -29,7 +29,7 @@ def evaluate(predictions_path="predictions.jsonl", outcomes_path="outcomes.jsonl
         actual_return = outcome.get("actual_return_pct")
         if actual_return is None:
             start = prediction.get("price_at_signal")
-            end = outcome.get("price_after_5m")
+            end = outcome.get("price_after_15m", outcome.get("price_after_5m"))
             actual_return = ((end - start) / start) * 100 if start and end else None
         if actual_return is None:
             continue

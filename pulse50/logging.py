@@ -19,6 +19,7 @@ def append_predictions(response: dict[str, Any], path: str | Path = "predictions
                 "direction": signal.get("direction"),
                 "probability_up": signal.get("probability_up"),
                 "price_at_signal": _price_from_debug(response, signal.get("symbol")),
+                "horizon_minutes": (response.get("run_metrics") or {}).get("horizon_minutes", 15),
                 "confidence": signal.get("confidence"),
                 "model_version": response.get("model_version"),
             }

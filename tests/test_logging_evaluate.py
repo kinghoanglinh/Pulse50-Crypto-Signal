@@ -27,7 +27,7 @@ class LoggingEvaluateTests(unittest.TestCase):
                     {
                         "as_of": "2026-05-27T10:00:00+00:00",
                         "symbol": "BTC",
-                        "price_after_5m": 101.0,
+                        "price_after_15m": 101.0,
                     }
                 )
                 + "\n",

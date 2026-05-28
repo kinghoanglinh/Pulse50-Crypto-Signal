@@ -1,4 +1,4 @@
-"""Record 5-minute outcomes for Pulse50 prediction logs."""
+"""Record 15-minute outcomes for Pulse50 prediction logs."""
 
 from __future__ import annotations
 
@@ -34,7 +34,8 @@ def record_outcomes(
             {
                 "as_of": prediction.get("as_of"),
                 "symbol": prediction.get("symbol"),
-                "price_after_5m": latest_price,
+                "price_after_15m": latest_price,
+                "horizon_minutes": 15,
                 "actual_return_pct": actual_return,
                 "provider_used": market_data.provider_used,
                 "data_quality": market_data.data_quality,

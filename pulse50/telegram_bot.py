@@ -25,13 +25,13 @@ except ImportError:  # pragma: no cover - import behavior is environment-specifi
 
 
 HELP_TEXT = """Lenh Pulse50:
-/scan - quet nhanh top 5 du doan Up/Down 5 phut
+/scan - quet nhanh top 5 du doan Up/Down 15 phut
 /top [n] - xem top n du doan, vi du /top 10
 /coin SYMBOL - xem rieng 1 coin, vi du /coin SOL
 /status - xem trang thai nguon du lieu/thoi gian chay
 /help - xem danh sach lenh
 
-Tin hieu chi dung cho prediction market 5 phut va nghien cuu. Khong phai loi khuyen tai chinh."""
+Tin hieu chi dung cho prediction market 15 phut va nghien cuu. Khong phai loi khuyen tai chinh."""
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +135,7 @@ def format_scan_response(response: dict[str, Any], limit: int = 5) -> str:
     if not signals:
         return "Pulse50 da quet xong.\nChua co du doan nao dat quality/risk controls.\n\n" + _vi_disclaimer()
 
-    lines = ["Pulse50 Du Doan Up/Down 5 Phut", ""]
+    lines = ["Pulse50 Du Doan Up/Down 15 Phut", ""]
     for signal in signals[:limit]:
         provider = signal.get("provider", {})
         side = _prediction_side(signal.get("direction"))
@@ -165,7 +165,7 @@ def format_coin_response(response: dict[str, Any], symbol: str) -> str:
             return "\n".join(
                 [
                     f"Pulse50 {symbol}",
-                    f"Du doan 5 phut: {_prediction_side(signal['direction'])}",
+                    f"Du doan 15 phut: {_prediction_side(signal['direction'])}",
                     f"Xac suat tang: {signal['probability_up']:.0%}",
                     f"Gia realtime: {_fmt_price(signal.get('current_price'))}",
                     f"Gia CMC tham chieu: {_fmt_price(signal.get('reference_price_cmc'))}",
@@ -251,10 +251,15 @@ def _vi_rationale(text: str) -> str:
         "MACD momentum is negative": "Dong luc MACD dang tieu cuc",
         "Order book bid imbalance is supportive": "Order book nghieng ve phe mua",
         "Order book ask imbalance is heavy": "Order book nghieng ve phe ban",
+        "15m EMA slope is rising": "EMA 15 phut dang doc len",
+        "15m EMA slope is falling": "EMA 15 phut dang doc xuong",
         "Short EMA slope is rising": "EMA ngan han dang doc len",
         "Short EMA slope is falling": "EMA ngan han dang doc xuong",
+        "15m momentum is positive": "Dong luc 15 phut dang tich cuc",
+        "15m momentum is negative": "Dong luc 15 phut dang tieu cuc",
         "Volume is elevated versus recent baseline": "Volume cao hon nen gan day",
         "BTC regime is weak, bullish score suppressed": "BTC dang yeu nen diem UP bi giam",
+        "BTC 15m regime is weak, UP score suppressed": "BTC khung 15 phut dang yeu nen diem UP bi giam",
         "Neutral short-horizon feature mix": "Tin hieu ngan han dang trung tinh",
     }
     for source, target in replacements.items():
@@ -263,7 +268,7 @@ def _vi_rationale(text: str) -> str:
 
 
 def _vi_disclaimer() -> str:
-    return "Tin hieu chi dung cho prediction market 5 phut va nghien cuu. Khong phai loi khuyen tai chinh."
+    return "Tin hieu chi dung cho prediction market 15 phut va nghien cuu. Khong phai loi khuyen tai chinh."
 
 
 def _target_price(signal: dict[str, Any]) -> float | None:

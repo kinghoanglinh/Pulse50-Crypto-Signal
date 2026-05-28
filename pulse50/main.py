@@ -20,7 +20,7 @@ from pulse50.schema.output import validate_response
 def analyze_pulse50_crypto_signals(
     universe_size: int = 3,
     exclude_stablecoins: bool = True,
-    horizon_minutes: int = 5,
+    horizon_minutes: int = 15,
     quote_asset: str = "USDT",
     include_debug_features: bool = False,
     risk_mode: str = "balanced",
@@ -28,12 +28,12 @@ def analyze_pulse50_crypto_signals(
     _universe_payload: dict[str, Any] | None = None,
     _log_predictions: bool = True,
 ) -> dict:
-    """Analyze top crypto assets for probabilistic 5-minute research signals."""
+    """Analyze target crypto assets for probabilistic 15-minute research signals."""
     warnings: list[str] = []
     started_at = perf_counter()
-    if horizon_minutes != 5:
-        warnings.append("horizon_minutes must equal 5 in v1; proceeding with 5")
-        horizon_minutes = 5
+    if horizon_minutes != 15:
+        warnings.append("horizon_minutes must equal 15 in v1; proceeding with 15")
+        horizon_minutes = 15
 
     universe_payload = _universe_payload
     if universe_payload is None:
@@ -82,6 +82,7 @@ def analyze_pulse50_crypto_signals(
             market_data_by_symbol=market_data_by_symbol,
             provider_latencies=provider_latencies,
             started_at=started_at,
+            horizon_minutes=horizon_minutes,
         ),
         "not_advice": NOT_ADVICE,
         "model_version": MODEL_VERSION,
@@ -178,6 +179,7 @@ def _run_metrics(
     market_data_by_symbol: dict[str, AssetMarketData],
     provider_latencies: dict[str, float],
     started_at: float,
+    horizon_minutes: int,
 ) -> dict[str, Any]:
     provider_costs = {"coinapi": 3, "coingecko": 1, "binance": 4, "fixture": 0, None: 0}
     missing_pairs = sum(1 for data in market_data_by_symbol.values() if not data.supported)
@@ -189,6 +191,7 @@ def _run_metrics(
         "stale_market_data_count": stale_count,
         "estimated_provider_weight_or_credits": estimated_cost,
         "total_run_time_seconds": round(perf_counter() - started_at, 4),
+        "horizon_minutes": horizon_minutes,
         "model_version": MODEL_VERSION,
     }
 
