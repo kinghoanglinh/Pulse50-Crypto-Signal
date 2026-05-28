@@ -11,6 +11,7 @@ class TelegramFormatterTests(unittest.TestCase):
                     "rank": 1,
                     "symbol": "SOL",
                     "current_price": 83.5,
+                    "reference_price_cmc": 83.55,
                     "direction": "UP",
                     "probability_up": 0.62,
                     "expected_return_range_pct": (0.1, 0.25),
@@ -28,7 +29,8 @@ class TelegramFormatterTests(unittest.TestCase):
         self.assertIn("Pulse50 Du Doan Up/Down 5 Phut", text)
         self.assertIn("SOL | Du doan: UP", text)
         self.assertIn("Xac suat tang", text)
-        self.assertIn("Gia hien tai", text)
+        self.assertIn("Gia realtime", text)
+        self.assertIn("Gia CMC tham chieu", text)
         self.assertIn("Moc gia ky vong", text)
         self.assertIn("Moc vo hieu du doan", text)
         self.assertIn("Nguon realtime", text)
@@ -40,6 +42,7 @@ class TelegramFormatterTests(unittest.TestCase):
                 {
                     "symbol": "BTC",
                     "current_price": 100000.0,
+                    "reference_price_cmc": 100010.0,
                     "direction": "FLAT",
                     "probability_up": 0.5,
                     "expected_return_range_pct": (-0.1, 0.1),

@@ -21,6 +21,8 @@ def compute_features(
         "symbol": market_data.symbol,
         "pair": market_data.pair,
         "current_price": current_price,
+        "reference_price_cmc": market_data.ticker.get("cmc_price"),
+        "reference_price_cmc_updated_at": market_data.ticker.get("cmc_last_updated"),
         "return_1m": _pct_change(closes, 1),
         "return_3m": _pct_change(closes, 3),
         "return_5m": _pct_change(closes, 5),

@@ -1,8 +1,7 @@
 # Pulse50 Multi-Source Crypto Signal Engine
 
 Pulse50 Crypto Signal is a production-oriented Swarms Marketplace tool for
-probabilistic 5-minute crypto market signals across the top 50 large-cap crypto
-assets.
+probabilistic 5-minute Up/Down prediction signals across BTC, ETH, and SOL.
 
 The product is designed as a multi-source signal engine. Binance is only one
 fallback provider; production routing can prefer normalized providers such as
@@ -61,9 +60,10 @@ Research signal only. Not financial, investment, or trading advice. Past signals
 
 ## Production Data Architecture
 
-- CoinAPI: preferred normalized multi-exchange provider when configured
+- Binance: primary low-latency exchange source for liquid spot pairs and order book data
+- CoinMarketCap: reference latest price feed
+- CoinAPI: normalized multi-exchange fallback when configured
 - CoinGecko: market-wide fallback for price/OHLCV coverage
-- Binance: exchange-specific fallback for liquid spot pairs and order book data
 - Every output records provider used, fallbacks, coverage score, freshness, and
   liquidity quality
 

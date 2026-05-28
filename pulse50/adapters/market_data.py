@@ -17,6 +17,8 @@ from pulse50.config import (
     COINAPI_BASE_URL,
     COINGECKO_API_KEY,
     COINGECKO_BASE_URL,
+    COINMARKETCAP_API_KEY,
+    COINMARKETCAP_BASE_URL,
     PROVIDER_PRIORITY,
 )
 from pulse50.cache.store import CACHE_TTLS, TTLCache, default_cache
@@ -197,7 +199,10 @@ class CoinAPIProvider:
     def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         headers = {"X-CoinAPI-Key": self.api_key}
         url = f"{self.base_url}{path}"
-        response = self.session.get(url, headers=headers, params=params or {}, timeout=10)
+        try:
+            response = self.session.get(url, headers=headers, params=params or {}, timeout=3)
+        except Exception as exc:
+            raise MarketDataProviderError(f"network error: {exc}") from exc
 
         if response.status_code == 404:
             raise MarketDataProviderError("symbol not found")
@@ -294,7 +299,10 @@ class CoinGeckoProvider:
         headers = {}
         if self.api_key:
             headers["x-cg-pro-api-key"] = self.api_key
-        response = self.session.get(f"{self.base_url}{path}", headers=headers, params=params or {}, timeout=10)
+        try:
+            response = self.session.get(f"{self.base_url}{path}", headers=headers, params=params or {}, timeout=3)
+        except Exception as exc:
+            raise MarketDataProviderError(f"network error: {exc}") from exc
         if response.status_code == 404:
             raise MarketDataProviderError("asset not found")
         if response.status_code == 429:
@@ -315,6 +323,7 @@ class BinanceProvider:
         requires_api_key=False,
         normalized_multi_exchange=False,
     )
+    known_liquid_pairs = {"BTCUSDT", "ETHUSDT", "SOLUSDT"}
 
     def __init__(self, base_url: str = BINANCE_BASE_URL, session: Any | None = None):
         self.base_url = base_url.rstrip("/")
@@ -354,6 +363,8 @@ class BinanceProvider:
         )
 
     def _pair_is_trading(self, pair: str) -> bool:
+        if pair in self.known_liquid_pairs:
+            return True
         payload = self._get("/api/v3/exchangeInfo", params={"symbol": pair})
         symbols = payload.get("symbols", []) if isinstance(payload, dict) else []
         return any(item.get("symbol") == pair and item.get("status") == "TRADING" for item in symbols)
@@ -369,11 +380,11 @@ class BinanceProvider:
         return [candle for candle in candles if candle]
 
     def _fetch_ticker(self, pair: str) -> dict[str, Any]:
-        payload = self._get("/api/v3/ticker/24hr", params={"symbol": pair})
+        payload = self._get("/api/v3/ticker/price", params={"symbol": pair})
         if not isinstance(payload, dict):
             raise MarketDataProviderError("unexpected ticker payload")
         return {
-            "last_price": _float_or_none(payload.get("lastPrice")),
+            "last_price": _float_or_none(payload.get("price")),
             "price_change_pct_24h": _float_or_none(payload.get("priceChangePercent")),
             "volume": _float_or_none(payload.get("volume")),
             "quote_volume": _float_or_none(payload.get("quoteVolume")),
@@ -387,7 +398,10 @@ class BinanceProvider:
         return _normalize_binance_order_book(payload)
 
     def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
-        response = self.session.get(f"{self.base_url}{path}", params=params or {}, timeout=10)
+        try:
+            response = self.session.get(f"{self.base_url}{path}", params=params or {}, timeout=3)
+        except Exception as exc:
+            raise MarketDataProviderError(f"network error: {exc}") from exc
         if response.status_code == 404:
             raise MarketDataProviderError("symbol not found")
         if response.status_code == 429:
@@ -395,6 +409,37 @@ class BinanceProvider:
         if response.status_code >= 400:
             raise MarketDataProviderError(f"http {response.status_code}")
         return response.json()
+
+
+class CoinMarketCapPriceClient:
+    """Batch latest-price client for BTC/ETH/SOL reference prices."""
+
+    def __init__(
+        self,
+        api_key: str = COINMARKETCAP_API_KEY,
+        base_url: str = COINMARKETCAP_BASE_URL,
+        session: Any | None = None,
+    ):
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+        self.session = session or requests
+
+    def get_latest_prices(self, symbols: list[str]) -> dict[str, dict[str, Any]]:
+        if not self.api_key or self.session is None or not symbols:
+            return {}
+        try:
+            response = self.session.get(
+                f"{self.base_url}/v3/cryptocurrency/quotes/latest",
+                headers={"X-CMC_PRO_API_KEY": self.api_key},
+                params={"symbol": ",".join(symbols), "convert": "USD"},
+                timeout=2,
+            )
+        except Exception:
+            return {}
+        if response.status_code >= 400:
+            return {}
+        payload = response.json()
+        return _parse_cmc_quotes(payload)
 
 
 class ProviderRouter:
@@ -568,6 +613,51 @@ def _coingecko_prices_to_candles(
             }
         )
     return candles
+
+
+def _parse_cmc_quotes(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    data = payload.get("data", {}) if isinstance(payload, dict) else {}
+    output: dict[str, dict[str, Any]] = {}
+    if isinstance(data, list):
+        iterable = [(str(item.get("symbol", "")), item) for item in data if isinstance(item, dict)]
+    elif isinstance(data, dict):
+        iterable = data.items()
+    else:
+        iterable = []
+    for key, raw_value in iterable:
+        items = raw_value if isinstance(raw_value, list) else [raw_value]
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            symbol = str(item.get("symbol") or key).upper()
+            quote_container = item.get("quote", {})
+            if isinstance(quote_container, dict):
+                quote = quote_container.get("USD", {})
+            elif isinstance(quote_container, list):
+                quote = next(
+                    (entry for entry in quote_container if entry.get("symbol") == "USD"),
+                    quote_container[0] if quote_container else {},
+                )
+            else:
+                quote = {}
+            if not quote and item.get("quotes"):
+                quote = (item["quotes"][0].get("quote", {}) or {}).get("USD", {})
+            price = quote.get("price")
+            if price is None:
+                continue
+            rank = item.get("cmc_rank")
+            existing = output.get(symbol)
+            if existing:
+                existing_rank = existing.get("cmc_rank")
+                if existing_rank and (rank is None or existing_rank <= rank):
+                    continue
+            output[symbol] = {
+                "price": float(price),
+                "last_updated": quote.get("last_updated") or quote.get("timestamp"),
+                "cmc_rank": rank,
+                "source": "coinmarketcap",
+            }
+    return output
 
 
 def _freshness_seconds(timestamp: Any) -> float | None:

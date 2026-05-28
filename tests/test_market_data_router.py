@@ -3,6 +3,7 @@ import unittest
 from pulse50.adapters.market_data import (
     AssetMarketData,
     BinanceProvider,
+    CoinMarketCapPriceClient,
     CoinGeckoProvider,
     CoinAPIProvider,
     MarketDataProviderError,
@@ -228,11 +229,11 @@ class MockBinanceSession:
                     ]
                 )
             return MockResponse(200, candles)
-        if url.endswith("/ticker/24hr"):
+        if url.endswith("/ticker/price"):
             return MockResponse(
                 200,
                 {
-                    "lastPrice": "129.5",
+                    "price": "129.5",
                     "priceChangePercent": "1.25",
                     "volume": "1234",
                     "quoteVolume": "567890",
@@ -286,6 +287,45 @@ class CoinGeckoProviderTests(unittest.TestCase):
         self.assertEqual(result.liquidity_quality, "unknown")
         self.assertEqual(len(result.ohlcv_1m), 30)
         self.assertEqual(len(result.ohlcv_5m), 10)
+
+
+class MockCMCSession:
+    def get(self, url, headers=None, params=None, timeout=5):
+        return MockResponse(
+            200,
+            {
+                "data": {
+                    "BTC": {
+                        "symbol": "BTC",
+                        "quote": {
+                            "USD": {
+                                "price": 100000.0,
+                                "last_updated": "2026-05-28T00:00:00Z",
+                            }
+                        },
+                    },
+                    "ETH": {
+                        "symbol": "ETH",
+                        "quote": {
+                            "USD": {
+                                "price": 2000.0,
+                                "last_updated": "2026-05-28T00:00:00Z",
+                            }
+                        },
+                    },
+                }
+            },
+        )
+
+
+class CoinMarketCapPriceClientTests(unittest.TestCase):
+    def test_fetches_batch_reference_prices(self):
+        client = CoinMarketCapPriceClient(api_key="test", session=MockCMCSession())
+
+        prices = client.get_latest_prices(["BTC", "ETH"])
+
+        self.assertEqual(prices["BTC"]["price"], 100000.0)
+        self.assertEqual(prices["ETH"]["source"], "coinmarketcap")
 
 
 if __name__ == "__main__":

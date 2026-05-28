@@ -10,14 +10,29 @@ def generate_signal(features: dict[str, Any]) -> dict[str, Any]:
     score = 0.0
     rationale: list[str] = []
 
+    for field, threshold, weight, label_up, label_down in (
+        ("return_1m", 0.03, 0.4, "1m momentum is positive", "1m momentum is negative"),
+        ("return_3m", 0.08, 0.5, "3m momentum is positive", "3m momentum is negative"),
+        ("return_5m", 0.12, 0.5, "5m momentum is positive", "5m momentum is negative"),
+    ):
+        value = features.get(field)
+        if value is None:
+            continue
+        if value > threshold:
+            score += weight
+            rationale.append(label_up)
+        elif value < -threshold:
+            score -= weight
+            rationale.append(label_down)
+
     rsi = features.get("rsi_14")
     if rsi is not None:
-        if rsi < 30:
-            score += 1.0
-            rationale.append("RSI is oversold")
-        elif rsi > 70:
-            score -= 1.0
-            rationale.append("RSI is overbought")
+        if rsi > 78 and score > 0:
+            score *= 0.75
+            rationale.append("RSI is hot, UP edge reduced")
+        elif rsi < 22 and score < 0:
+            score *= 0.75
+            rationale.append("RSI is weak, DOWN edge reduced")
 
     if features.get("macd_signal") == "positive":
         score += 0.5
@@ -65,6 +80,8 @@ def generate_signal(features: dict[str, Any]) -> dict[str, Any]:
         "symbol": features["symbol"],
         "pair": features.get("pair"),
         "current_price": features.get("current_price"),
+        "reference_price_cmc": features.get("reference_price_cmc"),
+        "reference_price_cmc_updated_at": features.get("reference_price_cmc_updated_at"),
         "direction": direction,
         "probability_up": probability_up,
         "expected_return_range_pct": expected_range,

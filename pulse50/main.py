@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from time import perf_counter
 from typing import Any
 
-from pulse50.adapters.market_data import AssetMarketData, ProviderRouter
+from pulse50.adapters.market_data import AssetMarketData, CoinMarketCapPriceClient, ProviderRouter
 from pulse50.adapters.universe import UniverseProviderError, fetch_top_market_assets
-from pulse50.config import MODEL_VERSION, NOT_ADVICE
+from pulse50.config import MODEL_VERSION, NOT_ADVICE, TARGET_SYMBOLS
 from pulse50.engine.features import compute_features, compute_regime_context
 from pulse50.engine.risk import apply_risk_controls
 from pulse50.engine.signal import generate_signal, rank_signals
@@ -17,7 +18,7 @@ from pulse50.schema.output import validate_response
 
 
 def analyze_pulse50_crypto_signals(
-    universe_size: int = 50,
+    universe_size: int = 3,
     exclude_stablecoins: bool = True,
     horizon_minutes: int = 5,
     quote_asset: str = "USDT",
@@ -36,35 +37,19 @@ def analyze_pulse50_crypto_signals(
 
     universe_payload = _universe_payload
     if universe_payload is None:
-        try:
-            universe_payload = fetch_top_market_assets(
-                universe_size=universe_size,
-                exclude_stablecoins=exclude_stablecoins,
-            )
-        except UniverseProviderError as exc:
-            universe_payload = {
-                "source": "coingecko",
-                "count": universe_size,
-                "actual_count": 0,
-                "filters": ["provider_unavailable"],
-                "assets": [],
-                "warnings": [f"universe provider failed: {exc}"],
-            }
+        universe_payload = _fixed_target_universe()
 
     warnings.extend(universe_payload.get("warnings", []))
     assets = universe_payload.get("assets", [])
     router = _router or ProviderRouter()
 
-    market_data_by_symbol: dict[str, AssetMarketData] = {}
-    provider_latencies: dict[str, float] = {}
-    for asset in assets:
-        symbol = str(asset.get("symbol", "")).upper()
-        if not symbol:
-            continue
-        asset_started_at = perf_counter()
-        data = router.get_asset_market_data(symbol, quote_asset=quote_asset)
-        provider_latencies[symbol] = round(perf_counter() - asset_started_at, 4)
-        market_data_by_symbol[symbol] = data
+    market_data_by_symbol, provider_latencies = _fetch_market_data_fast(
+        assets=assets,
+        router=router,
+        quote_asset=quote_asset,
+    )
+    _attach_cmc_prices(market_data_by_symbol)
+    for data in market_data_by_symbol.values():
         warnings.extend(data.warnings)
 
     regime_context = compute_regime_context(market_data_by_symbol)
@@ -120,6 +105,60 @@ def _summary(signals: list[dict[str, Any]]) -> str:
         for signal in top
     ]
     return "Top Pulse50 signals: " + "; ".join(parts)
+
+
+def _fixed_target_universe() -> dict[str, Any]:
+    assets = [{"symbol": symbol, "name": symbol} for symbol in TARGET_SYMBOLS]
+    return {
+        "source": "fixed_target_symbols",
+        "count": len(assets),
+        "actual_count": len(assets),
+        "filters": ["btc_eth_sol_only", "exclude_stablecoins", "low_latency"],
+        "assets": assets,
+        "warnings": [],
+    }
+
+
+def _fetch_market_data_fast(
+    assets: list[dict[str, Any]],
+    router: ProviderRouter,
+    quote_asset: str,
+) -> tuple[dict[str, AssetMarketData], dict[str, float]]:
+    market_data_by_symbol: dict[str, AssetMarketData] = {}
+    provider_latencies: dict[str, float] = {}
+    symbols = [str(asset.get("symbol", "")).upper() for asset in assets if asset.get("symbol")]
+    with ThreadPoolExecutor(max_workers=min(3, max(1, len(symbols)))) as executor:
+        futures = {}
+        for symbol in symbols:
+            started_at = perf_counter()
+            future = executor.submit(router.get_asset_market_data, symbol, quote_asset)
+            futures[future] = (symbol, started_at)
+        for future in as_completed(futures):
+            symbol, started_at = futures[future]
+            provider_latencies[symbol] = round(perf_counter() - started_at, 4)
+            try:
+                market_data_by_symbol[symbol] = future.result()
+            except Exception as exc:
+                market_data_by_symbol[symbol] = AssetMarketData(
+                    symbol=symbol,
+                    quote_asset=quote_asset,
+                    pair=None,
+                    supported=False,
+                    provider_used=None,
+                    data_quality="provider_unavailable",
+                    warnings=[f"{symbol}: provider error: {exc}"],
+                )
+    return market_data_by_symbol, provider_latencies
+
+
+def _attach_cmc_prices(market_data_by_symbol: dict[str, AssetMarketData]) -> None:
+    quotes = CoinMarketCapPriceClient().get_latest_prices(list(market_data_by_symbol))
+    for symbol, quote in quotes.items():
+        data = market_data_by_symbol.get(symbol)
+        if data is None:
+            continue
+        data.ticker["cmc_price"] = quote.get("price")
+        data.ticker["cmc_last_updated"] = quote.get("last_updated")
 
 
 def _data_sources(signals: list[dict[str, Any]]) -> list[dict[str, Any]]:

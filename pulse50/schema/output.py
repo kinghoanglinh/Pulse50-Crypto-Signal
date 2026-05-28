@@ -30,6 +30,8 @@ if BaseModel is not None:
         symbol: str
         pair: str | None
         current_price: float | None = None
+        reference_price_cmc: float | None = None
+        reference_price_cmc_updated_at: str | None = None
         direction: Literal["UP", "DOWN", "FLAT"]
         probability_up: float = Field(ge=0.0, le=1.0)
         expected_return_range_pct: tuple[float, float]
